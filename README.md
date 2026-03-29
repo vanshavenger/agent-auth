@@ -100,11 +100,83 @@ Create `.env` in project root:
 
 ```env
 GOOGLE_API_KEY=your_google_api_key
+GOOGLE_MODEL_NAME=your_model_name
 STORE_ID=your_openfga_store_id
 MODEL_ID=your_openfga_authorization_model_id
 ```
 
 The app validates these values at startup and exits immediately with a clear error if any are missing or empty.
+
+## OpenFGA setup (store, model, permissions)
+
+Install the OpenFGA CLI if you don't already have it:
+
+```bash
+brew install openfga/tap/fga
+```
+
+### 1) Create a store
+
+```bash
+fga store create --name agent-auth
+```
+
+Copy the returned `id` into your `.env` as `STORE_ID`.
+
+### 2) Load `model.fga` into the store
+
+```bash
+fga model write \
+	--api-url http://localhost:8080 \
+	--store-id "$STORE_ID" \
+	--file model.fga
+```
+
+Copy the returned authorization model id into `.env` as `MODEL_ID`.
+
+### 3) Add permissions (tuples)
+
+Add permission for reading `notes.txt`:
+
+```bash
+fga tuple write \
+	--api-url http://localhost:8080 \
+	--store-id "$STORE_ID" \
+	--model-id "$MODEL_ID" \
+	agent:task-123 reader file:notes.txt
+```
+
+Add permission for creating PRs in `my-repo`:
+
+```bash
+fga tuple write \
+	--api-url http://localhost:8080 \
+	--store-id "$STORE_ID" \
+	--model-id "$MODEL_ID" \
+	agent:task-123 editor repo:my-repo
+```
+
+### 4) Verify permissions
+
+Check `read_file` tuple:
+
+```bash
+fga query check \
+	--api-url http://localhost:8080 \
+	--store-id "$STORE_ID" \
+	--model-id "$MODEL_ID" \
+	agent:task-123 reader file:notes.txt
+```
+
+Check `create_pr` tuple:
+
+```bash
+fga query check \
+	--api-url http://localhost:8080 \
+	--store-id "$STORE_ID" \
+	--model-id "$MODEL_ID" \
+	agent:task-123 editor repo:my-repo
+```
 
 ## Install and run
 

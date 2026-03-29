@@ -27,11 +27,12 @@ def get_required_env(name: str) -> str:
 
 
 GOOGLE_API_KEY = get_required_env("GOOGLE_API_KEY")
+GOOGLE_MODEL_NAME = get_required_env("GOOGLE_MODEL_NAME")
 STORE_ID = get_required_env("STORE_ID")
 MODEL_ID = get_required_env("MODEL_ID")
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+    model=GOOGLE_MODEL_NAME,
     google_api_key=GOOGLE_API_KEY,
     temperature=0.2,
 )
