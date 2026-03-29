@@ -12,6 +12,9 @@ from openfga_sdk import (
     ClientConfiguration,
 )
 from openfga_sdk.client.models import ClientCheckRequest, ClientTuple
+from datetime import datetime, timedelta
+
+delegation_store = {}
 
 load_dotenv()
 
@@ -81,11 +84,16 @@ async def check_fga(user: str, relation: str, obj: str) -> bool:
 
 async def authorize(user, action, relation, obj):
     if not check_opa(action):
-        raise Exception(f"❌ Blocked by OPA: {action}")
+        raise Exception("❌ Blocked by OPA")
+
+    if user.startswith("agent:worker"):
+        if not is_delegation_valid(user):
+            raise Exception("❌ Delegation expired")
 
     allowed = await check_fga(user, relation, obj)
+
     if not allowed:
-        raise Exception(f"❌ Blocked by OpenFGA: {relation} on {obj}")
+        raise Exception("❌ Blocked by OpenFGA")
 
     return True
 
@@ -145,6 +153,13 @@ async def delete_tuple(user: str, relation: str, obj: str):
         await fga_client.close()
 
 
+def is_delegation_valid(user):
+    expiry = delegation_store.get(user)
+    if not expiry:
+        return False
+    return datetime.now() < expiry
+
+
 async def delegate_access(orchestrator: str, worker: str):
     print("\n🔐 Orchestrator attempting delegation...")
 
@@ -157,6 +172,11 @@ async def delegate_access(orchestrator: str, worker: str):
 
     await delete_tuple(worker, "delegated_viewer", "repo:my-repo")
     await delete_tuple(worker, "delegated_reader", "file:notes.txt")
+
+    expiry = datetime.now() + timedelta(minutes=5)
+    delegation_store[worker] = expiry
+
+    print(f"⏳ Delegation expires at {expiry}")
 
     await write_tuple(worker, "delegated_viewer", "repo:my-repo")
 
