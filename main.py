@@ -188,8 +188,14 @@ async def delegate_access(orchestrator: str, worker: str):
 agent = create_agent(
     model=llm,
     tools=[read_file, create_pr],
-    system_prompt="You are a secure assistant. Use tools to satisfy user requests.",
+    system_prompt="You are a secure assistant. Decide which tools to use to complete the task.",
 )
+
+
+async def revoke_access(worker: str):
+    await delete_tuple(worker, "delegated_viewer", "repo:my-repo")
+    await delete_tuple(worker, "delegated_reader", "file:notes.txt")
+    delegation_store.pop(worker, None)
 
 
 def run_multi_agent_task():
@@ -201,23 +207,25 @@ def run_multi_agent_task():
     print("\n🧠 Orchestrator planning task...")
 
     asyncio.run(delegate_access(orchestrator, worker))
+    try:
+        CURRENT_AGENT = worker
 
-    CURRENT_AGENT = worker
+        print(f"\n⚙️ Worker {worker} executing task...\n")
 
-    print(f"\n⚙️ Worker {worker} executing task...\n")
-
-    result = agent.invoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Read notes.txt and then create a PR in my-repo",
-                }
-            ]
-        }
-    )
-
-    return result["messages"][-1].content
+        result = agent.invoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Read notes.txt and then create a PR in my-repo",
+                    }
+                ]
+            }
+        )
+        return result["messages"][-1].content
+    finally:
+        asyncio.run(revoke_access(worker))
+        CURRENT_AGENT = worker
 
 
 if __name__ == "__main__":
