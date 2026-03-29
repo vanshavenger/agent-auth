@@ -11,7 +11,7 @@ from openfga_sdk import (
     OpenFgaClient,
     ClientConfiguration,
 )
-from openfga_sdk.client.models import ClientCheckRequest
+from openfga_sdk.client.models import ClientCheckRequest, ClientTuple
 
 load_dotenv()
 
@@ -51,7 +51,7 @@ def check_opa(action: str) -> bool:
             json={
                 "input": {
                     "action": action,
-                    "time": "16:00",  # change to test policy
+                    "time": "16:00",
                 }
             },
         )
@@ -89,17 +89,14 @@ async def authorize(user, action, relation, obj):
 
     return True
 
-CURRENT_AGENT = "agent:worker-1" 
+
+CURRENT_AGENT = "agent:worker-1"
+
 
 @tool
 def read_file(filename: str) -> str:
     """Read a file (requires authorization)"""
-    asyncio.run(authorize(
-        CURRENT_AGENT,
-        "read_file",
-        "can_read",
-        f"file:{filename}"
-    ))
+    asyncio.run(authorize(CURRENT_AGENT, "read_file", "can_read", f"file:{filename}"))
 
     with open(filename, "r") as f:
         return f.read()
@@ -108,20 +105,72 @@ def read_file(filename: str) -> str:
 @tool
 def create_pr(repo: str) -> str:
     """Create a PR in a repo (mock)"""
-    asyncio.run(authorize(
-        CURRENT_AGENT,
-        "create_pr",
-        "can_write",
-        f"repo:{repo}"
-    ))
+    asyncio.run(authorize(CURRENT_AGENT, "create_pr", "can_write", f"repo:{repo}"))
 
     return f"✅ PR successfully created in {repo}"
+
+
+async def write_tuple(user: str, relation: str, obj: str):
+    fga_client = OpenFgaClient(fga_config)
+    try:
+        await fga_client.write_tuples(
+            [
+                ClientTuple(
+                    user=user,
+                    relation=relation,
+                    object=obj,
+                )
+            ]
+        )
+    except Exception as e:
+        print("FGA Write Error:", e)
+        raise
+    finally:
+        await fga_client.close()
+
+
+async def delete_tuple(user: str, relation: str, obj: str):
+    fga_client = OpenFgaClient(fga_config)
+    try:
+        await fga_client.delete_tuples(
+            [
+                ClientTuple(
+                    user=user,
+                    relation=relation,
+                    object=obj,
+                )
+            ]
+        )
+    finally:
+        await fga_client.close()
+
+
+async def delegate_access(orchestrator: str, worker: str):
+    print("\n🔐 Orchestrator attempting delegation...")
+
+    can_delegate = await check_fga(orchestrator, "can_write", "repo:my-repo")
+
+    if not can_delegate:
+        raise Exception("❌ Cannot delegate: orchestrator lacks permission")
+
+    print("✅ Delegation allowed")
+
+    await delete_tuple(worker, "delegated_viewer", "repo:my-repo")
+    await delete_tuple(worker, "delegated_reader", "file:notes.txt")
+
+    await write_tuple(worker, "delegated_viewer", "repo:my-repo")
+
+    await write_tuple(worker, "delegated_reader", "file:notes.txt")
+
+    print(f"🚀 Delegation granted to {worker}")
+
 
 agent = create_agent(
     model=llm,
     tools=[read_file, create_pr],
     system_prompt="You are a secure assistant. Use tools to satisfy user requests.",
 )
+
 
 def run_multi_agent_task():
     global CURRENT_AGENT
@@ -131,20 +180,11 @@ def run_multi_agent_task():
 
     print("\n🧠 Orchestrator planning task...")
 
-    allowed = asyncio.run(check_fga(
-        orchestrator,
-        "can_read",
-        "repo:my-repo"
-    ))
-
-    if not allowed:
-        raise Exception("❌ Orchestrator cannot delegate")
-
-    print("🔐 Delegation allowed")
+    asyncio.run(delegate_access(orchestrator, worker))
 
     CURRENT_AGENT = worker
 
-    print(f"⚙️ Worker {worker} executing task...\n")
+    print(f"\n⚙️ Worker {worker} executing task...\n")
 
     result = agent.invoke(
         {
