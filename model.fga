@@ -5,9 +5,35 @@ type agent
 
 type file
   relations
+    # direct access
     define reader: [agent]
+    define writer: [agent]
+
+    # delegation
+    define delegated_reader: [agent]
+
+    # final permissions
+    define can_read: reader or writer or delegated_reader
+    define can_write: writer
 
 type repo
   relations
+    # direct access
     define viewer: [agent]
     define editor: [agent]
+
+    # delegation
+    define delegated_viewer: [agent]
+
+    # final permissions
+    define can_read: viewer or editor or delegated_viewer
+    define can_write: editor
+
+type delegation
+  relations
+    # for audit only (not used in checks)
+    define delegator: [agent]
+    define delegatee: [agent]
+
+    define repo: [repo]
+    define file: [file]

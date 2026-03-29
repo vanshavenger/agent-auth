@@ -51,7 +51,7 @@ def check_opa(action: str) -> bool:
             json={
                 "input": {
                     "action": action,
-                    "time": "20:00",  # change to test policy
+                    "time": "16:00",  # change to test policy
                 }
             },
         )
@@ -89,11 +89,17 @@ async def authorize(user, action, relation, obj):
 
     return True
 
+CURRENT_AGENT = "agent:worker-1" 
 
 @tool
 def read_file(filename: str) -> str:
     """Read a file (requires authorization)"""
-    asyncio.run(authorize("agent:task-123", "read_file", "reader", f"file:{filename}"))
+    asyncio.run(authorize(
+        CURRENT_AGENT,
+        "read_file",
+        "can_read",
+        f"file:{filename}"
+    ))
 
     with open(filename, "r") as f:
         return f.read()
@@ -102,10 +108,14 @@ def read_file(filename: str) -> str:
 @tool
 def create_pr(repo: str) -> str:
     """Create a PR in a repo (mock)"""
-    asyncio.run(authorize("agent:task-123", "create_pr", "editor", f"repo:{repo}"))
+    asyncio.run(authorize(
+        CURRENT_AGENT,
+        "create_pr",
+        "can_write",
+        f"repo:{repo}"
+    ))
 
     return f"✅ PR successfully created in {repo}"
-
 
 agent = create_agent(
     model=llm,
@@ -113,22 +123,49 @@ agent = create_agent(
     system_prompt="You are a secure assistant. Use tools to satisfy user requests.",
 )
 
+def run_multi_agent_task():
+    global CURRENT_AGENT
+
+    orchestrator = "agent:orchestrator"
+    worker = "agent:worker-1"
+
+    print("\n🧠 Orchestrator planning task...")
+
+    allowed = asyncio.run(check_fga(
+        orchestrator,
+        "can_read",
+        "repo:my-repo"
+    ))
+
+    if not allowed:
+        raise Exception("❌ Orchestrator cannot delegate")
+
+    print("🔐 Delegation allowed")
+
+    CURRENT_AGENT = worker
+
+    print(f"⚙️ Worker {worker} executing task...\n")
+
+    result = agent.invoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Read notes.txt and then create a PR in my-repo",
+                }
+            ]
+        }
+    )
+
+    return result["messages"][-1].content
+
 
 if __name__ == "__main__":
-    print("\n🚀 Running Secure Agent...\n")
+    print("\n🚀 Running Multi-Agent System...\n")
 
     try:
-        result = agent.invoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "Read notes.txt and then create a PR in my-repo",
-                    }
-                ]
-            }
-        )
-        print("\n✅ RESULT:\n", result["messages"][-1].content)
+        result = run_multi_agent_task()
+        print("\n✅ RESULT:\n", result)
 
     except Exception as e:
         print("\n❌ ERROR:\n", e)
