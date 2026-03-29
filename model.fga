@@ -1,0 +1,13 @@
+model
+  schema 1.1
+
+type agent
+
+type file
+  relations
+    define reader: [agent]
+
+type repo
+  relations
+    define viewer: [agent]
+    define editor: [agent]
