@@ -15,9 +15,20 @@ from openfga_sdk.client.models import ClientCheckRequest
 
 load_dotenv()
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-STORE_ID = os.getenv("STORE_ID")
-MODEL_ID = os.getenv("MODEL_ID")
+
+def get_required_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        raise RuntimeError(
+            f"Missing required environment variable: {name}. "
+            "Add it to your .env file before starting the app."
+        )
+    return value
+
+
+GOOGLE_API_KEY = get_required_env("GOOGLE_API_KEY")
+STORE_ID = get_required_env("STORE_ID")
+MODEL_ID = get_required_env("MODEL_ID")
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-3-flash-preview",
@@ -39,9 +50,9 @@ def check_opa(action: str) -> bool:
             json={
                 "input": {
                     "action": action,
-                    "time": "20:00"  # change to test policy
+                    "time": "20:00",  # change to test policy
                 }
-            }
+            },
         )
         return response.json()["result"]["allow"]
     except Exception as e:
@@ -52,11 +63,13 @@ def check_opa(action: str) -> bool:
 async def check_fga(user: str, relation: str, obj: str) -> bool:
     fga_client = OpenFgaClient(fga_config)
     try:
-        result = await fga_client.check(ClientCheckRequest(
-            user=user,
-            relation=relation,
-            object=obj,
-        ))
+        result = await fga_client.check(
+            ClientCheckRequest(
+                user=user,
+                relation=relation,
+                object=obj,
+            )
+        )
         return result.allowed
     except Exception as e:
         print("FGA Error:", e)
@@ -75,15 +88,11 @@ async def authorize(user, action, relation, obj):
 
     return True
 
+
 @tool
 def read_file(filename: str) -> str:
     """Read a file (requires authorization)"""
-    asyncio.run(authorize(
-        "agent:task-123",
-        "read_file",
-        "reader",
-        f"file:{filename}"
-    ))
+    asyncio.run(authorize("agent:task-123", "read_file", "reader", f"file:{filename}"))
 
     with open(filename, "r") as f:
         return f.read()
@@ -92,21 +101,15 @@ def read_file(filename: str) -> str:
 @tool
 def create_pr(repo: str) -> str:
     """Create a PR in a repo (mock)"""
-    asyncio.run(authorize(
-        "agent:task-123",
-        "create_pr",
-        "editor",
-        f"repo:{repo}"
-    ))
+    asyncio.run(authorize("agent:task-123", "create_pr", "editor", f"repo:{repo}"))
 
     return f"✅ PR successfully created in {repo}"
-
 
 
 agent = create_agent(
     model=llm,
     tools=[read_file, create_pr],
-    system_prompt="You are a secure assistant. Use tools to satisfy user requests."
+    system_prompt="You are a secure assistant. Use tools to satisfy user requests.",
 )
 
 
@@ -114,11 +117,16 @@ if __name__ == "__main__":
     print("\n🚀 Running Secure Agent...\n")
 
     try:
-        result = agent.invoke({
-            "messages": [
-                {"role": "user", "content": "Read notes.txt and then create a PR in my-repo"}
-            ]
-        })
+        result = agent.invoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Read notes.txt and then create a PR in my-repo",
+                    }
+                ]
+            }
+        )
         print("\n✅ RESULT:\n", result["messages"][-1].content)
 
     except Exception as e:

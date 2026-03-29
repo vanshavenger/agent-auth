@@ -104,6 +104,8 @@ STORE_ID=your_openfga_store_id
 MODEL_ID=your_openfga_authorization_model_id
 ```
 
+The app validates these values at startup and exits immediately with a clear error if any are missing or empty.
+
 ## Install and run
 
 ```bash
@@ -141,6 +143,5 @@ If either fails, execution is blocked with a clear error.
 ## Next improvements
 
 - Replace hard-coded time with real current time
-- Add fast startup validation for missing `.env` values
 - Replace mock `create_pr` with a real GitHub/Git provider integration
 - Add tests for policy + relationship authorization behavior
